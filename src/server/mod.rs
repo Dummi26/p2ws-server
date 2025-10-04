@@ -10,7 +10,7 @@ pub use connections::WebsocketServer;
 
 use tokio::sync::Mutex;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
     data::{Color, Coordinate},
@@ -21,6 +21,8 @@ use crate::{
 };
 
 pub use handle_authentication::AuthenticationError;
+
+const DELAY_BETWEEN_WEBSOCKET_MESSAGES: Duration = Duration::from_millis(10);
 
 /// Shared state, can be shared using `.clone()`.
 pub struct Server<W: P2Write + Unpin> {

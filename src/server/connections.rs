@@ -1,15 +1,21 @@
-use std::{collections::VecDeque, convert::Infallible};
+use std::{collections::VecDeque, convert::Infallible, sync::Arc, time::Duration};
 
 use futures_util::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use tokio::net::{TcpListener, TcpStream, ToSocketAddrs};
+use tokio::{
+    net::{TcpListener, TcpStream, ToSocketAddrs},
+    sync::Mutex,
+    task::{AbortHandle, JoinHandle},
+    time::sleep,
+};
 use tokio_tungstenite::WebSocketStream;
 
 use crate::{
     server::{
-        P2Read, P2Write, Server,
+        DELAY_BETWEEN_WEBSOCKET_MESSAGES, P2Read, P2Write, Server,
+        connection_data::ActiveConnectionData,
         handle_connection::{Disconnected, handle_connection},
     },
     users::Users,
@@ -56,8 +62,11 @@ async fn handle_tcp_connection(connection: TcpStream, users: Users, server: Webs
         let (write, read) = connection.split();
         let (read, write) = (
             ReadableWebsocketStream(read, Default::default(), None),
-            WritableWebsocketStream(write, Default::default()),
+            Arc::new(Mutex::new(ActiveConnectionData::new(
+                WritableWebsocketStream(write, Default::default(), None, None),
+            ))),
         );
+        write.try_lock().unwrap().write.3 = Some(Arc::clone(&write));
         match handle_connection(users, server, read, write).await {
             Ok(Disconnected) => {}
             Err(_e) => {}
@@ -73,6 +82,8 @@ pub struct ReadableWebsocketStream(
 pub struct WritableWebsocketStream(
     pub SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
     VecDeque<u8>,
+    Option<JoinHandle<tokio::io::Result<()>>>,
+    Option<Arc<Mutex<ActiveConnectionData<Self>>>>,
 );
 
 impl P2Read for ReadableWebsocketStream {
@@ -122,14 +133,39 @@ impl P2Read for ReadableWebsocketStream {
 impl P2Write for WritableWebsocketStream {
     async fn write_all(&mut self, buf: &[u8]) -> tokio::io::Result<()> {
         self.1.extend(buf);
-        if self.1.len() > 1024 {
-            self.flush().await
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     async fn flush(&mut self) -> tokio::io::Result<()> {
+        let result = if self.2.as_ref().is_some_and(|task| task.is_finished()) {
+            self.2.take().unwrap().await.unwrap()
+        } else {
+            Ok(())
+        };
+        if self.2.is_none() {
+            let con = self.3.as_ref().map(Arc::clone).unwrap();
+            self.2 = Some(tokio::task::spawn(async move {
+                sleep(DELAY_BETWEEN_WEBSOCKET_MESSAGES).await;
+                let mut con = con.lock().await;
+                if con.write.1.len() > 0 {
+                    con.write.force_flush().await
+                } else {
+                    Ok(())
+                }
+            }));
+        }
+        result
+    }
+
+    async fn close(&mut self) -> tokio::io::Result<()> {
+        if let Some(task) = self.2.take() {
+            task.abort();
+        }
+        self.0.close().await.map_err(|e| std::io::Error::other(e))
+    }
+}
+impl WritableWebsocketStream {
+    pub async fn force_flush(&mut self) -> tokio::io::Result<()> {
         self.0
             .send(tokio_tungstenite::tungstenite::Message::Binary(
                 tokio_tungstenite::tungstenite::Bytes::from_iter(self.1.drain(..)),
@@ -137,9 +173,5 @@ impl P2Write for WritableWebsocketStream {
             .await
             .map_err(|e| std::io::Error::other(e))?;
         self.0.flush().await.map_err(|e| std::io::Error::other(e))
-    }
-
-    async fn close(&mut self) -> tokio::io::Result<()> {
-        self.0.close().await.map_err(|e| std::io::Error::other(e))
     }
 }

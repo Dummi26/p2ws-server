@@ -56,6 +56,7 @@ pub async fn handle_received_messages(
             0xD0 if valid => {
                 // Message: Put
                 if ratelimit.should_drop_message().await {
+                    valid = false;
                     continue 'receive_a_message;
                 }
                 let coord = if let Some(v) = Coordinate::read_p2encoded(connection).await? {

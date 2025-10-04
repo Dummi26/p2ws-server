@@ -23,11 +23,10 @@ pub async fn handle_connection(
     users: Users,
     server: WebsocketServer,
     mut read: ReadableWebsocketStream,
-    write: WritableWebsocketStream,
+    active_connection_data: Arc<Mutex<ActiveConnectionData<WritableWebsocketStream>>>,
 ) -> Result<Disconnected, HandleConnectionError> {
     match handle_authentication(users, &mut read).await {
         Ok(Ok(user)) => {
-            let active_connection_data = Arc::new(Mutex::new(ActiveConnectionData::new(write)));
             let mut cons_lock = server.active_connections.lock().await;
             if let Some(previous_connection) =
                 cons_lock.insert(user.clone(), Arc::clone(&active_connection_data))
