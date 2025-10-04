@@ -4,8 +4,9 @@ use tokio::sync::Mutex;
 
 use crate::{
     server::{
-        P2Read, P2Write, Server,
+        P2Write, WebsocketServer,
         connection_data::ActiveConnectionData,
+        connections::{ReadableWebsocketStream, WritableWebsocketStream},
         handle_authentication::{AuthenticationError, handle_authentication},
         handle_received_messages::handle_received_messages,
     },
@@ -18,11 +19,11 @@ pub enum HandleConnectionError {
     AuthenticationError(AuthenticationError),
 }
 
-pub async fn handle_connection<W: P2Write + Unpin>(
+pub async fn handle_connection(
     users: Users,
-    server: Server<W>,
-    mut read: impl P2Read + Unpin,
-    write: W,
+    server: WebsocketServer,
+    mut read: ReadableWebsocketStream,
+    write: WritableWebsocketStream,
 ) -> Result<Disconnected, HandleConnectionError> {
     match handle_authentication(users, &mut read).await {
         Ok(Ok(user)) => {

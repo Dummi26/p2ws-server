@@ -55,7 +55,7 @@ async fn handle_tcp_connection(connection: TcpStream, users: Users, server: Webs
     if let Ok(connection) = tokio_tungstenite::accept_async(connection).await {
         let (write, read) = connection.split();
         let (read, write) = (
-            ReadableWebsocketStream(read, Default::default()),
+            ReadableWebsocketStream(read, Default::default(), None),
             WritableWebsocketStream(write, Default::default()),
         );
         match handle_connection(users, server, read, write).await {
@@ -65,9 +65,13 @@ async fn handle_tcp_connection(connection: TcpStream, users: Users, server: Webs
     }
 }
 
-pub struct ReadableWebsocketStream(SplitStream<WebSocketStream<TcpStream>>, VecDeque<u8>);
+pub struct ReadableWebsocketStream(
+    SplitStream<WebSocketStream<TcpStream>>,
+    VecDeque<u8>,
+    pub Option<tokio_tungstenite::tungstenite::Bytes>,
+);
 pub struct WritableWebsocketStream(
-    SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
+    pub SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
     VecDeque<u8>,
 );
 
@@ -93,6 +97,10 @@ impl P2Read for ReadableWebsocketStream {
         while buf.len() > 0 {
             match self.0.next().await {
                 Some(Ok(msg)) => {
+                    if msg.is_ping() {
+                        self.2 = Some(msg.into_data());
+                        continue;
+                    }
                     let bytes = msg.into_data();
                     if buf.len() < bytes.len() {
                         buf.copy_from_slice(&bytes[0..buf.len()]);

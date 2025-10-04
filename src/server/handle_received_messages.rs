@@ -1,27 +1,39 @@
 use std::sync::Arc;
 
+use futures_util::SinkExt;
 use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     data::{Area, Color, Coordinate},
     protocol::P2Decodable,
     server::{
-        P2Read, P2Write, Server,
+        P2Read, P2Write, WebsocketServer,
         connection_data::ActiveConnectionData,
+        connections::{ReadableWebsocketStream, WritableWebsocketStream},
         handle_connection::{Disconnected, HandleConnectionError},
     },
     users::UserId,
 };
 
-pub async fn handle_received_messages<W: P2Write + Unpin>(
-    server: Server<W>,
+pub async fn handle_received_messages(
+    server: WebsocketServer,
     user: UserId,
-    active_connection_data: Arc<Mutex<ActiveConnectionData<W>>>,
-    connection: &mut (impl P2Read + Unpin),
+    active_connection_data: Arc<Mutex<ActiveConnectionData<WritableWebsocketStream>>>,
+    connection: &mut ReadableWebsocketStream,
 ) -> Result<Disconnected, HandleConnectionError> {
     let mut ratelimit = server.ratelimit.ratelimiter();
     let mut valid = true;
     'receive_a_message: loop {
+        if let Some(ping) = connection.2.take() {
+            active_connection_data
+                .lock()
+                .await
+                .write
+                .0
+                .send(tokio_tungstenite::tungstenite::Message::Pong(ping))
+                .await
+                .ok();
+        }
         let mut first = [0u8];
         connection.read_exact(&mut first).await?;
         match first[0] {
