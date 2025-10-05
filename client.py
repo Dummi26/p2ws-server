@@ -16,7 +16,6 @@ top_left = (0, 0)
 bottom_right = (0, 0)
 top_left_px = (0, 0)
 zoom = 10
-last_put_time = -1
 
 def enc_coord_i16(x):
     if -127 <= x and x <= 127:
@@ -92,13 +91,10 @@ with connect("ws://localhost:8080") as websocket:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEMOTION:
-                now_time_increment = time.time_ns() // (1000000000/100)
-                if now_time_increment != last_put_time:
-                    last_put_time = now_time_increment
-                    mx, my = pygame.mouse.get_pos()
-                    tlx, tly = top_left_px
-                    x, y = (top_left[0] + (mx - tlx) // zoom, top_left[1] + (my - tly) // zoom)
-                    websocket.send(msg_put(x, y, random.randint(0, 32), random.randint(0, 32), random.randint(0, 32)))
+                mx, my = pygame.mouse.get_pos()
+                tlx, tly = top_left_px
+                x, y = (top_left[0] + (mx - tlx) // zoom, top_left[1] + (my - tly) // zoom)
+                websocket.send(msg_put(x, y, random.randint(0, 32), random.randint(0, 32), random.randint(0, 32)))
 
         w, h = screen.get_size()
         if (w, h) != window_size:
@@ -117,22 +113,30 @@ with connect("ws://localhost:8080") as websocket:
             sub_message[8], sub_message[9] = enc_coord_i16(bottom_right[1])
             websocket.send(sub_message)
 
-        # pygame.draw.rect(screen, "purple", (w/2-50, h/2-50, 100, 100))
-
-        try:
-            for message in websocket.recv(timeout=1/30, decode=False).split(b'\xFF'):
-                if len(message) > 0:
-                    if message[0] == 0x01 and len(message) > 6:
-                        # Single-Pixel update message
-                        x = dec_coord_i16(message[1], message[2])
-                        y = dec_coord_i16(message[3], message[4])
-                        r, g, b = dec_color(message[5], message[6])
-                        
-                        pygame.draw.rect(screen, (r * 8, g * 8, b * 8), (top_left_px[0]+zoom*(x-top_left[0]), top_left_px[1]+zoom*(y-top_left[1]), zoom, zoom))
-                    else:
-                        print("Received unknown message")
-        except Exception:
-            pass
+        for i in range(0, 10):
+            timedOut = False
+            try:
+                for message in websocket.recv(timeout=0, decode=False).split(b'\xFF'):
+                    if len(message) > 0:
+                        if message[0] & 0b10000000 == 0:
+                            w = message[0] & 0x0F
+                            h = ((message[0] & 0x70) >> 4) + 1
+                            x1 = dec_coord_i16(message[1], message[2])
+                            y1 = dec_coord_i16(message[3], message[4])
+                            byte_index = 5
+                            for y_rel in range(0, h):
+                                for x_rel in range(0, w):
+                                    y = y1 + y_rel
+                                    x = x1 + x_rel
+                                    r, g, b = dec_color(message[byte_index], message[byte_index + 1])
+                                    byte_index += 2
+                                    pygame.draw.rect(screen, (r * 8, g * 8, b * 8), (top_left_px[0]+zoom*(x-top_left[0]), top_left_px[1]+zoom*(y-top_left[1]), zoom, zoom))
+                        else:
+                            print("Received unknown message")
+            except Exception:
+                timedOut = True
+            if timedOut:
+                break
 
         pygame.display.flip()
         clock.tick(60)
