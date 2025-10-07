@@ -13,6 +13,19 @@ pub trait P2Decodable: Sized {
     ) -> tokio::io::Result<Option<Self>>;
 }
 
+impl P2Write for Vec<u8> {
+    async fn write_all(&mut self, buf: &[u8]) -> tokio::io::Result<()> {
+        self.extend(buf);
+        Ok(())
+    }
+    async fn flush(&mut self) -> tokio::io::Result<()> {
+        Ok(())
+    }
+    async fn close(&mut self) -> tokio::io::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 #[derive(Debug, Default)]
 pub struct TestLoopbackConnection(std::collections::VecDeque<u8>);

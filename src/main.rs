@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{process::ExitCode, time::Duration};
 
 use crate::{ratelimit::RatelimitSettings, server::WebsocketServer, users::Users};

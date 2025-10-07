@@ -5,7 +5,7 @@ pub struct Color {
     pub b: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coordinate {
     pub x: i16,
     pub y: i16,
@@ -29,10 +29,30 @@ impl Area {
         }
     }
 
+    pub fn left(&self) -> i16 {
+        self.top_left.x
+    }
+    pub fn right(&self) -> i16 {
+        self.bottom_right.x
+    }
+    pub fn top(&self) -> i16 {
+        self.top_left.y
+    }
+    pub fn bottom(&self) -> i16 {
+        self.bottom_right.y
+    }
+
     pub fn contains(&self, coord: Coordinate) -> bool {
-        self.top_left.x <= coord.x
-            && coord.x <= self.bottom_right.x
-            && self.top_left.y <= coord.y
-            && coord.y <= self.bottom_right.y
+        self.left() <= coord.x
+            && coord.x <= self.right()
+            && self.top() <= coord.y
+            && coord.y <= self.bottom()
+    }
+
+    pub fn intersects(&self, other: Area) -> bool {
+        !(other.right() < self.left()
+            || self.right() < other.left()
+            || other.bottom() < self.top()
+            || self.bottom() < other.top())
     }
 }
