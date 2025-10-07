@@ -128,9 +128,10 @@ with connect("ws://localhost:8080") as websocket:
                                 for x_rel in range(0, w):
                                     y = y1 + y_rel
                                     x = x1 + x_rel
-                                    r, g, b = dec_color(message[byte_index], message[byte_index + 1])
-                                    byte_index += 2
-                                    pygame.draw.rect(screen, (r * 8, g * 8, b * 8), (top_left_px[0]+zoom*(x-top_left[0]), top_left_px[1]+zoom*(y-top_left[1]), zoom, zoom))
+                                    if (message[byte_index] | message[byte_index + 1]) != 0:
+                                        r, g, b = dec_color(message[byte_index], message[byte_index + 1])
+                                        byte_index += 2
+                                        pygame.draw.rect(screen, (r * 8, g * 8, b * 8), (top_left_px[0]+zoom*(x-top_left[0]), top_left_px[1]+zoom*(y-top_left[1]), zoom, zoom))
                         else:
                             print("Received unknown message")
             except Exception:

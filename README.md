@@ -82,6 +82,8 @@ After receiving a Sub message from a client, the server may send (in order):
 - `0xFF hw` where `0 < w <= 15, 0 <= h <= 7`
 - The `x` and `y` position of the top left pixel of the area which it wants to update on the client
 - The `w*(h+1)` colors of the pixel in the area defined by `x, y, w, h+1` (`h+1` rows, where each row contains `w` colors, and each color is 2 bytes)
+  + Instead of a color, the special value `0x00 00` (decoded as the number `0`, which is not a valid color) can be used to indicate
+    that the pixel has not actually changed, which some servers may use to increase the efficiency of the Update messages.
 
 A simpler version of this (where `w = 1, h = 0`) to update only a single pixel:
 
